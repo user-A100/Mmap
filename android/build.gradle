@@ -1,0 +1,4 @@
+// Top-level build file for 轨迹记录器
+plugins {
+    id 'com.android.application' version '8.2.2' apply false
+}
