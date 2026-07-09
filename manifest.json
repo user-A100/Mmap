@@ -1,0 +1,30 @@
+{
+  "id": "/",
+  "name": "轨迹记录器",
+  "short_name": "轨迹记录",
+  "description": "记录日常移动轨迹，支持定时记录、地标管理、历史回放",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen", "minimal-ui"],
+  "background_color": "#ffffff",
+  "theme_color": "#1a73e8",
+  "orientation": "portrait-primary",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["navigation", "utilities", "lifestyle"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

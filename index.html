@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a73e8">
+    <title>轨迹记录器</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="leaflet.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- 地图容器 -->
+    <div id="map"></div>
+
+    <!-- 快捷记录按钮（大圆形，一键开始/停止） -->
+    <button id="fab-record" onclick="quickToggleRecord()" title="一键记录">
+        <div id="fab-record-inner" class="fab-record-stop">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+                <circle cx="12" cy="12" r="8"/>
+            </svg>
+        </div>
+    </button>
+
+    <!-- 刷新按钮 -->
+    <button id="fab-refresh" onclick="refreshApp()" title="刷新页面">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+    </button>
+
+    <!-- 浮动菜单按钮（手机触达） -->
+    <button id="fab-menu" onclick="openMenu()" title="功能菜单">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+            <line x1="4" y1="6" x2="20" y2="6"/>
+            <line x1="4" y1="12" x2="20" y2="12"/>
+            <line x1="4" y1="18" x2="20" y2="18"/>
+        </svg>
+    </button>
+
+    <!-- 浮动定位按钮 -->
+    <button id="fab-locate" onclick="locateMe()" title="我的位置">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="3" fill="white"/>
+            <circle cx="12" cy="12" r="9" stroke="white" stroke-width="2" fill="none"/>
+            <line x1="12" y1="2" x2="12" y2="6" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="12" y1="18" x2="12" y2="22" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="2" y1="12" x2="6" y2="12" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="18" y1="12" x2="22" y2="12" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+    </button>
+
+    <!-- 小巧搜索栏 -->
+    <div id="search-bar">
+        <div class="search-container">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2.5" stroke-linecap="round">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="search-input" placeholder="搜索" autocomplete="off">
+            <button id="search-clear" class="search-clear hidden" onclick="clearSearch()">✕</button>
+        </div>
+        <div id="search-results" class="search-results hidden"></div>
+    </div>
+
+    <!-- 顶部状态栏 -->
+    <div id="status-bar">
+        <span id="status-dot" class="dot inactive"></span>
+        <span id="status-text">未记录</span>
+        <span id="current-time" style="margin-left:auto;">--:--:--</span>
+    </div>
+
+    <!-- Ctrl+M 功能菜单弹窗 -->
+    <div id="menu-overlay" class="menu-overlay hidden" onclick="closeMenu()">
+        <div class="menu-dialog" onclick="event.stopPropagation()">
+            <div class="menu-header">
+                <h3>功能菜单</h3>
+                <span class="menu-hint">点击右下角 ☰ 打开</span>
+            </div>
+            <div class="menu-body">
+                <!-- 记录控制 -->
+                <div class="menu-section">
+                    <div class="menu-label">📡 轨迹记录</div>
+                    <div class="menu-grid">
+                        <button id="mnu-start" class="menu-btn primary" onclick="startTracking();closeMenu();">▶ 开始记录</button>
+                        <button id="mnu-pause" class="menu-btn warn" onclick="pauseTracking();closeMenu();" disabled>⏸ 暂停</button>
+                        <button id="mnu-stop" class="menu-btn danger" onclick="stopTracking();closeMenu();" disabled>⏹ 停止保存</button>
+                    </div>
+                    <div class="menu-mini-row">
+                        <span>点数: <b id="mnu-points">0</b></span>
+                        <span>公里: <b id="mnu-dist">0.00</b></span>
+                        <span>时长: <b id="mnu-dur">00:00</b></span>
+                    </div>
+                </div>
+                <!-- 工具 -->
+                <div class="menu-section">
+                    <div class="menu-label">🔧 工具</div>
+                    <div class="menu-grid two-col">
+                        <button class="menu-btn" onclick="locateMe();closeMenu();">📍 我的位置</button>
+                        <button class="menu-btn" onclick="focusSearch();closeMenu();">🔍 搜索地点</button>
+                        <button class="menu-btn" onclick="clearMapDisplay();closeMenu();">🗑 清除显示</button>
+                        <button class="menu-btn" onclick="refreshApp();closeMenu();">🔄 刷新应用</button>
+                        <button class="menu-btn" onclick="switchTab('settings');closeMenu();">⚙ 时段设置</button>
+                    </div>
+                </div>
+                <!-- 地标 -->
+                <div class="menu-section">
+                    <div class="menu-label">📌 地标</div>
+                    <button class="menu-btn block" onclick="saveLandmark();closeMenu();">➕ 保存当前位置为地标</button>
+                    <div id="menu-landmarks" class="menu-landmark-list"></div>
+                </div>
+                <!-- 历史快捷 -->
+                <div class="menu-section">
+                    <div class="menu-label">📋 历史轨迹</div>
+                    <button class="menu-btn block" onclick="switchTab('history');closeMenu();">查看历史记录</button>
+                </div>
+            </div>
+            <button class="menu-close-btn" onclick="closeMenu()">关闭</button>
+        </div>
+    </div>
+
+    <!-- 底部轻量面板（仅显示数据状态和标签切换） -->
+    <div id="bottom-bar">
+        <div class="bottom-tabs">
+            <button class="btab active" data-tab="main">轨迹</button>
+            <button class="btab" data-tab="landmarks">地标</button>
+            <button class="btab" data-tab="settings">设置</button>
+            <button class="btab" data-tab="history">历史</button>
+        </div>
+        <div id="tab-main" class="btab-content active">
+            <div class="mini-stats">
+                <span>📊 <b id="point-count">0</b>点</span>
+                <span>🛣 <b id="distance">0.00</b>km</span>
+                <span>⏱ <b id="duration">00:00</b></span>
+            </div>
+        </div>
+        <div id="tab-settings" class="btab-content">
+            <div class="settings-compact">
+                <label class="toggle-label">
+                    <span>定时记录</span>
+                    <input type="checkbox" id="schedule-enabled" onchange="updateSchedule()">
+                    <span class="toggle-slider"></span>
+                </label>
+                <div class="time-row">
+                    <input type="time" id="start-time" value="08:00" onchange="updateSchedule()">
+                    <span>—</span>
+                    <input type="time" id="end-time" value="18:00" onchange="updateSchedule()">
+                </div>
+                <div class="settings-row-compact">
+                    <select id="accuracy-level" onchange="updateAccuracy()">
+                        <option value="high">高精度</option>
+                        <option value="medium" selected>平衡</option>
+                        <option value="low">省电</option>
+                    </select>
+                    <select id="update-interval" onchange="updateInterval()">
+                        <option value="3">3秒</option>
+                        <option value="5" selected>5秒</option>
+                        <option value="10">10秒</option>
+                        <option value="30">30秒</option>
+                        <option value="60">1分钟</option>
+                        <option value="120">2分钟</option>
+                        <option value="300">5分钟</option>
+                        <option value="600">10分钟</option>
+                        <option value="900">15分钟</option>
+                        <option value="1800">30分钟</option>
+                        <option value="3600">1小时</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                    <input type="number" id="custom-interval" placeholder="秒" min="1" style="display:none;width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;" onchange="updateInterval()">
+                </div>
+            </div>
+        </div>
+        <div id="tab-history" class="btab-content">
+            <div id="history-list" class="compact-history">
+                <p class="empty-hint">暂无历史</p>
+            </div>
+        </div>
+        <div id="tab-landmarks" class="btab-content">
+            <div id="landmark-list" class="compact-landmarks">
+                <button class="menu-btn primary block" onclick="saveLandmark()" style="margin-bottom:8px;">➕ 保存当前位置为地标</button>
+                <p class="empty-hint">暂无地标</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 权限遮罩 -->
+    <div id="permission-overlay" class="overlay hidden">
+        <div class="overlay-content">
+            <h3>需要位置权限</h3>
+            <p>此应用需要持续访问您的位置信息以记录移动轨迹。请允许位置权限。</p>
+            <button class="menu-btn primary" onclick="requestPermission()" style="width:100%;">允许位置权限</button>
+        </div>
+    </div>
+
+    <script src="leaflet.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

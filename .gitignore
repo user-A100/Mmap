@@ -1,0 +1,11 @@
+# 证书文件（每个设备需自生成）
+.certs/
+
+# Node.js
+node_modules/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

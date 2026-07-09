@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a73e8">
+    <title>轨迹记录器</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{--primary:#1a73e8;--primary-dark:#1557b0;--danger:#e53935;--warning:#f9a825;--success:#43a047;--bg:#fff;--surface:#f5f6fa;--text:#333;--text2:#666;--border:#e0e0e0;--safe-b:env(safe-area-inset-bottom,8px);--safe-t:env(safe-area-inset-top,0px)}
+        html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:var(--text);background:var(--bg);-webkit-tap-highlight-color:transparent}
+        #map{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0}
+        #search-bar{position:fixed;top:calc(8px + var(--safe-t));left:50%;transform:translateX(-50%);z-index:150;width:180px;max-width:60vw;pointer-events:none;display:flex;flex-direction:column;align-items:center}
+        .search-container{display:flex;align-items:center;background:rgba(255,255,255,0.96);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:20px;padding:0 10px;height:32px;box-shadow:0 1px 6px rgba(0,0,0,0.1);border:1px solid var(--border);pointer-events:all;width:100%;transition:width 0.25s ease,box-shadow 0.2s}
+        .search-container:focus-within{width:240px;max-width:80vw;box-shadow:0 2px 12px rgba(26,115,232,0.18);border-color:var(--primary)}
+        .search-icon{flex-shrink:0;margin-right:5px;opacity:0.6}
+        #search-input{flex:1;border:none;background:none;font-size:13px;color:var(--text);outline:none;padding:0;font-family:inherit;min-width:0}
+        #search-input::placeholder{color:#aaa;font-size:12px}
+        .search-clear{background:none;border:none;font-size:12px;color:#999;cursor:pointer;padding:2px;flex-shrink:0}
+        .search-clear.hidden{display:none}
+        .search-results{background:rgba(255,255,255,0.98);border-radius:10px;margin-top:6px;max-height:240px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12);pointer-events:all;width:240px;max-width:80vw}
+        .search-results.hidden{display:none}
+        .search-result-item{padding:10px 12px;font-size:13px;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background 0.15s;display:flex;align-items:center;gap:8px}
+        .search-result-item:last-child{border-bottom:none}.search-result-item:hover,.search-result-item:active{background:#f0f7ff}
+        .search-result-item .result-icon{flex-shrink:0;font-size:14px}
+        .search-result-item .result-main{flex:1;overflow:hidden}
+        .search-result-item .result-name{font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .search-result-item .result-addr{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+        #status-bar{position:fixed;top:calc(48px + var(--safe-t));left:0;right:0;height:36px;background:rgba(255,255,255,0.9);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;padding:0 12px;z-index:100;border-bottom:1px solid var(--border);font-size:12px;gap:6px}
+        .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+        .dot.inactive{background:#999}.dot.active{background:var(--success);animation:pulse 1.5s infinite}.dot.paused{background:var(--warning)}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+        #status-text{font-weight:600;font-size:12px;color:var(--text)}
+        #current-time{font-size:11px;color:var(--text2);margin-left:auto}
+        #fab-locate{position:fixed;right:12px;bottom:120px;width:44px;height:44px;border-radius:50%;background:var(--primary);border:none;box-shadow:0 3px 12px rgba(26,115,232,0.4);z-index:200;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform 0.2s}
+        #fab-locate:active{transform:scale(0.9)}
+        #fab-locate.locating{animation:fabPulse 0.6s ease-in-out infinite;background:var(--primary-dark)}
+        @keyframes fabPulse{0%,100%{box-shadow:0 3px 12px rgba(26,115,232,0.4);transform:scale(1)}50%{box-shadow:0 3px 24px rgba(26,115,232,0.7);transform:scale(1.08)}}
+        #bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--bg);border-radius:16px 16px 0 0;box-shadow:0 -1px 8px rgba(0,0,0,0.08);padding-bottom:var(--safe-b)}
+        .bottom-tabs{display:flex;border-bottom:1px solid var(--border)}
+        .btab{flex:1;padding:10px 0;font-size:13px;font-weight:500;background:none;border:none;color:var(--text2);cursor:pointer;position:relative;transition:color 0.2s}
+        .btab.active{color:var(--primary);font-weight:600}
+        .btab.active::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:24px;height:2px;background:var(--primary);border-radius:1px}
+        .btab-content{display:none;padding:10px 14px}.btab-content.active{display:block}
+        .mini-stats{display:flex;justify-content:space-around;font-size:12px;color:var(--text2)}
+        .mini-stats b{color:var(--text);font-size:15px;margin:0 2px}
+        .settings-compact{font-size:12px}
+        .toggle-label{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;font-size:12px}
+        .toggle-label input[type="checkbox"]{display:none}
+        .toggle-slider{position:relative;width:40px;height:22px;background:#ccc;border-radius:11px;transition:background 0.3s;flex-shrink:0}
+        .toggle-slider::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform 0.3s}
+        .toggle-label input:checked+.toggle-slider{background:var(--primary)}
+        .toggle-label input:checked+.toggle-slider::after{transform:translateX(18px)}
+        .time-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+        .time-row input[type="time"]{flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit}
+        .time-row span{color:var(--text2);font-size:12px}
+        .settings-row-compact{display:flex;gap:6px}
+        .settings-row-compact select{flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--bg)}
+        .compact-history{max-height:120px;overflow-y:auto}
+        .compact-history .history-item,.compact-landmarks .lm-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px}
+        .compact-history .history-item .date,.compact-landmarks .lm-item .lm-name{font-weight:600;font-size:12px}
+        .compact-history .history-item .meta,.compact-landmarks .lm-item .lm-meta{font-size:11px;color:var(--text2)}
+        .compact-history .history-item .actions,.compact-landmarks .lm-item .lm-actions{display:flex;gap:4px}
+        .compact-history .history-item .btn-icon,.compact-landmarks .lm-item .btn-icon{background:none;border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:10px;cursor:pointer}
+        .compact-history .history-item .btn-icon.delete,.compact-landmarks .lm-item .btn-icon.delete{color:var(--danger);border-color:var(--danger)}
+        .empty-hint{text-align:center;color:var(--text2);padding:16px 0;font-size:12px}
+        .compact-landmarks{max-height:120px;overflow-y:auto;cursor:pointer}
+        .compact-landmarks .lm-item:hover{background:var(--surface)}
+        .menu-landmark-list{max-height:120px;overflow-y:auto;margin-top:6px}
+        .menu-landmark-list .lm-item-small{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px;cursor:pointer}
+        .menu-landmark-list .lm-item-small:hover{background:var(--surface)}
+        .menu-landmark-list .lm-item-small .lm-name-s{font-weight:600;color:var(--text)}
+        .menu-landmark-list .lm-item-small .lm-del{font-size:10px;color:var(--danger);cursor:pointer;padding:2px 4px}
+        .menu-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:900;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease}
+        .menu-overlay.hidden{display:none}@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        .menu-dialog{background:var(--bg);border-radius:16px;width:320px;max-width:90vw;max-height:75vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.2);animation:slideUp 0.25s ease}
+        @keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
+        .menu-header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border)}
+        .menu-header h3{font-size:16px;color:var(--text);margin:0}
+        .menu-hint{font-size:11px;color:var(--text2)}
+        .menu-body{padding:14px 18px;overflow-y:auto;flex:1}
+        .menu-section{margin-bottom:16px}
+        .menu-label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
+        .menu-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+        .menu-grid.two-col{grid-template-columns:repeat(2,1fr)}
+        .menu-mini-row{display:flex;justify-content:space-around;font-size:11px;color:var(--text2);margin-top:8px;padding:6px 0}
+        .menu-mini-row b{color:var(--text);font-size:13px}
+        .menu-btn{flex:1;padding:9px 6px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:background 0.2s,transform 0.1s;white-space:nowrap;text-align:center}
+        .menu-btn:active{transform:scale(0.96)}.menu-btn:disabled{opacity:0.4;pointer-events:none}
+        .menu-btn.primary{background:var(--primary);color:#fff}
+        .menu-btn.warn{background:var(--warning);color:#fff}
+        .menu-btn.danger{background:var(--danger);color:#fff}
+        .menu-btn:not(.primary):not(.warn):not(.danger){background:var(--surface);color:var(--text);border:1px solid var(--border)}
+        .menu-btn.block{width:100%}
+        .menu-close-btn{width:100%;padding:12px;border:none;border-top:1px solid var(--border);background:none;font-size:14px;color:var(--text2);cursor:pointer;font-weight:500}
+        .pulse-marker-container{background:none!important;border:none!important}
+        .pulse-marker{position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center}
+        .pulse-dot{width:12px;height:12px;background:#1a73e8;border:3px solid #fff;border-radius:50%;box-shadow:0 1px 6px rgba(0,0,0,0.3);z-index:3;position:relative}
+        .pulse-ring{position:absolute;top:50%;left:50%;width:40px;height:40px;margin-left:-20px;margin-top:-20px;border-radius:50%;border:3px solid #1a73e8;opacity:0;animation:pulseRing 2s cubic-bezier(0.25,0.46,0.45,0.94) infinite;pointer-events:none}
+        .pulse-ring-2{animation-delay:0.5s}
+        @keyframes pulseRing{0%{transform:scale(0.5);opacity:0.8}100%{transform:scale(2.0);opacity:0}}
+        .overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center}
+        .overlay.hidden{display:none}
+        .overlay-content{background:var(--bg);border-radius:16px;padding:24px;margin:24px;text-align:center;max-width:320px}
+        .overlay-content h3{margin-bottom:8px;font-size:18px}
+        .overlay-content p{margin-bottom:20px;font-size:14px;color:var(--text2);line-height:1.6}
+        .leaflet-control-zoom{margin-top:90px!important}.leaflet-control-attribution{display:none}
+        /* 首次打开提示 */
+        #gps-tip{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:950;display:flex;align-items:center;justify-content:center}
+        #gps-tip.hidden{display:none}
+        #gps-tip .tip-box{background:#fff;border-radius:16px;padding:24px;margin:16px;max-width:340px;text-align:center}
+        #gps-tip .tip-box h3{font-size:18px;margin-bottom:10px}
+        #gps-tip .tip-box p{font-size:13px;color:#666;line-height:1.7;text-align:left;margin-bottom:16px}
+        #gps-tip .tip-box code{background:#f5f6fa;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all}
+        #gps-tip .tip-box button{width:100%;padding:12px;border:none;border-radius:10px;background:#1a73e8;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <!-- GPS 提示（file:// 协议时显示） -->
+    <div id="gps-tip" class="hidden">
+        <div class="tip-box">
+            <h3>⚠️ 需要 HTTP 协议</h3>
+            <p>当前以 <code>file://</code> 方式打开，浏览器禁止获取GPS定位。</p>
+            <p><b>解决方法：</b></p>
+            <p>1. 手机和电脑连同一WiFi<br>2. 用Chrome访问：<br><code>http://183.173.161.104:8080/轨迹记录器.html</code></p>
+            <p>或安装 <b>Simple HTTP Server</b> App，指向文件所在文件夹，然后访问 <code>http://127.0.0.1:8080/轨迹记录器.html</code></p>
+            <button onclick="document.getElementById('gps-tip').classList.add('hidden')">我知道了</button>
+        </div>
+    </div>
+
+    <button id="fab-locate" onclick="locateMe()" title="我的位置">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="3" fill="white"/><circle cx="12" cy="12" r="9" stroke="white" stroke-width="2" fill="none"/>
+            <line x1="12" y1="2" x2="12" y2="6" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="12" y1="18" x2="12" y2="22" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="2" y1="12" x2="6" y2="12" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="18" y1="12" x2="22" y2="12" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+    </button>
+    <div id="search-bar">
+        <div class="search-container">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="search-input" placeholder="搜索" autocomplete="off">
+            <button id="search-clear" class="search-clear hidden" onclick="clearSearch()">✕</button>
+        </div>
+        <div id="search-results" class="search-results hidden"></div>
+    </div>
+    <div id="status-bar">
+        <span id="status-dot" class="dot inactive"></span><span id="status-text">未记录</span><span id="current-time">--:--:--</span>
+    </div>
+    <div id="menu-overlay" class="menu-overlay hidden" onclick="closeMenu()">
+        <div class="menu-dialog" onclick="event.stopPropagation()">
+            <div class="menu-header"><h3>功能菜单</h3><span class="menu-hint">Ctrl+M</span></div>
+            <div class="menu-body">
+                <div class="menu-section"><div class="menu-label">📡 轨迹记录</div>
+                    <div class="menu-grid">
+                        <button id="mnu-start" class="menu-btn primary" onclick="startTracking();closeMenu();">▶ 开始</button>
+                        <button id="mnu-pause" class="menu-btn warn" onclick="pauseTracking();closeMenu();" disabled>⏸ 暂停</button>
+                        <button id="mnu-stop" class="menu-btn danger" onclick="stopTracking();closeMenu();" disabled>⏹ 停止</button>
+                    </div>
+                    <div class="menu-mini-row"><span>点:<b id="mnu-points">0</b></span><span>km:<b id="mnu-dist">0.00</b></span><span>时:<b id="mnu-dur">00:00</b></span></div>
+                </div>
+                <div class="menu-section"><div class="menu-label">🔧 工具</div>
+                    <div class="menu-grid two-col">
+                        <button class="menu-btn" onclick="locateMe();closeMenu();">📍 定位</button>
+                        <button class="menu-btn" onclick="focusSearch();closeMenu();">🔍 搜索</button>
+                        <button class="menu-btn" onclick="clearMapDisplay();closeMenu();">🗑 清除</button>
+                        <button class="menu-btn" onclick="switchTab('settings');closeMenu();">⚙ 设置</button>
+                    </div>
+                </div>
+                <div class="menu-section"><div class="menu-label">📌 地标</div>
+                    <button class="menu-btn block" onclick="saveLandmark();closeMenu();">➕ 保存当前位置</button>
+                    <div id="menu-landmarks" class="menu-landmark-list"></div>
+                </div>
+                <div class="menu-section"><div class="menu-label">📋 轨迹历史</div>
+                    <button class="menu-btn block" onclick="switchTab('history');closeMenu();">查看历史</button>
+                </div>
+            </div>
+            <button class="menu-close-btn" onclick="closeMenu()">关闭</button>
+        </div>
+    </div>
+    <div id="bottom-bar">
+        <div class="bottom-tabs">
+            <button class="btab active" data-tab="main">轨迹</button><button class="btab" data-tab="landmarks">地标</button><button class="btab" data-tab="settings">设置</button><button class="btab" data-tab="history">历史</button>
+        </div>
+        <div id="tab-main" class="btab-content active"><div class="mini-stats"><span>📊<b id="point-count">0</b>点</span><span>🛣<b id="distance">0.00</b>km</span><span>⏱<b id="duration">00:00</b></span></div></div>
+        <div id="tab-landmarks" class="btab-content"><div id="landmark-list" class="compact-landmarks"><p class="empty-hint">暂无地标</p></div></div>
+        <div id="tab-settings" class="btab-content">
+            <div class="settings-compact">
+                <label class="toggle-label"><span>定时记录</span><input type="checkbox" id="schedule-enabled" onchange="updateSchedule()"><span class="toggle-slider"></span></label>
+                <div class="time-row"><input type="time" id="start-time" value="08:00" onchange="updateSchedule()"><span>—</span><input type="time" id="end-time" value="18:00" onchange="updateSchedule()"></div>
+                <div class="settings-row-compact">
+                    <select id="accuracy-level" onchange="updateAccuracy()"><option value="high">高精度</option><option value="medium" selected>平衡</option><option value="low">省电</option></select>
+                    <select id="update-interval" onchange="updateInterval()"><option value="3">3秒</option><option value="5" selected>5秒</option><option value="10">10秒</option><option value="30">30秒</option><option value="60">60秒</option></select>
+                </div>
+            </div>
+        </div>
+        <div id="tab-history" class="btab-content"><div id="history-list" class="compact-history"><p class="empty-hint">暂无历史</p></div></div>
+    </div>
+    <div id="permission-overlay" class="overlay hidden">
+        <div class="overlay-content"><h3>需要位置权限</h3><p>请允许浏览器获取您的位置信息。</p><button class="menu-btn primary" onclick="requestPermission()" style="width:100%">允许位置权限</button></div>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+const STATE={tracking:false,paused:false,scheduleEnabled:false,schedules:[],positions:[],watchId:null,startTime:null,pausedDuration:0,pauseStartTime:null,totalDistance:0,intervalSeconds:5,accuracyLevel:'medium',minDistanceFilter:3};
+let map,currentMarker,trackPolyline,allPolylines=[],allMarkers=[];
+let searchMarker,searchDebounce,landmarks=[],landmarkMarkers=[];
+
+// 检测 file:// 协议
+if(window.location.protocol==='file:'){
+    document.getElementById('gps-tip').classList.remove('hidden');
+}
+
+function initMap(){
+    map=L.map('map',{zoomControl:true,attributionControl:false}).setView([39.9088,116.3974],14);
+    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['1','2','3','4'],maxZoom:18,minZoom:3}).addTo(map);
+    L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}&scl=1&ltype=4',{subdomains:['1','2','3','4'],maxZoom:18,minZoom:3}).addTo(map);
+    map.on('locationfound',e=>{const gcj=wgs84ToGcj02(e.latlng.lat,e.latlng.lng);if(!STATE.tracking||STATE.paused)updateCurrentMarker(gcj.lat,gcj.lng)});
+}
+function wgs84ToGcj02(lat,lng){
+    const PI=Math.PI,a=6378245.0,ee=0.00669342162296594323;
+    function tL(x,y){let r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;r+=(20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3;r+=(160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3;return r}
+    function tN(x,y){let r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;r+=(20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;r+=(150*Math.sin(x/12*PI)+300*Math.sin(x*PI/30))*2/3;return r}
+    const dL=tL(lng-105,lat-35),dN=tN(lng-105,lat-35),r=lat/180*PI;
+    let m=Math.sin(r);m=1-ee*m*m;const sM=Math.sqrt(m);
+    return{lat:lat+(dL*180)/((a*(1-ee))/(m*sM)*PI),lng:lng+(dN*180)/(a/sM*Math.cos(r)*PI)}
+}
+function calcDist(la,lo,la2,lo2){const R=6371000,d1=(la2-la)*Math.PI/180,d2=(lo2-lo)*Math.PI/180,a=Math.sin(d1/2)**2+Math.cos(la*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(d2/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}
+function onPositionUpdate(pos){
+    if(!STATE.tracking||STATE.paused)return;
+    const gcj=wgs84ToGcj02(pos.coords.latitude,pos.coords.longitude);
+    const pt={lat:gcj.lat,lng:gcj.lng,accuracy:pos.coords.accuracy,timestamp:pos.timestamp||Date.now()};
+    if(STATE.positions.length>0){const last=STATE.positions[STATE.positions.length-1],d=calcDist(last.lat,last.lng,gcj.lat,gcj.lng);if(d<STATE.minDistanceFilter)return;STATE.totalDistance+=d}
+    STATE.positions.push(pt);updateCurrentMarker(gcj.lat,gcj.lng);updateTrackLine();updateStats()
+}
+function updateCurrentMarker(lat,lng){
+    if(currentMarker){currentMarker.setLatLng([lat,lng])}else{currentMarker=L.marker([lat,lng],{icon:L.divIcon({className:'pulse-marker-container',html:'<div class="pulse-marker"><div class="pulse-ring"></div><div class="pulse-ring pulse-ring-2"></div><div class="pulse-dot"></div></div>',iconSize:[40,40],iconAnchor:[20,20]}),zIndexOffset:1000}).addTo(map)}
+    if(STATE.tracking&&!STATE.paused)map.panTo([lat,lng],{animate:true,duration:0.5})
+}
+function updateTrackLine(){if(STATE.positions.length<2)return;const coords=STATE.positions.map(p=>[p.lat,p.lng]);if(trackPolyline)trackPolyline.setLatLngs(coords);else trackPolyline=L.polyline(coords,{color:'#1a73e8',weight:4,opacity:0.8,smoothFactor:2}).addTo(map)}
+
+function startTracking(){if(STATE.tracking&&!STATE.paused)return;if(STATE.paused){resumeTracking();return}STATE.tracking=true;STATE.paused=false;STATE.positions=[];STATE.startTime=Date.now();STATE.pausedDuration=0;STATE.totalDistance=0;if(trackPolyline){map.removeLayer(trackPolyline);trackPolyline=null}if(currentMarker){map.removeLayer(currentMarker);currentMarker=null}startWatching();updateButtonStates();updateStatus('recording')}
+function pauseTracking(){if(!STATE.tracking||STATE.paused)return;STATE.paused=true;STATE.pauseStartTime=Date.now();stopWatching();updateButtonStates();updateStatus('paused')}
+function resumeTracking(){if(!STATE.tracking||!STATE.paused)return;STATE.paused=false;if(STATE.pauseStartTime){STATE.pausedDuration+=Date.now()-STATE.pauseStartTime;STATE.pauseStartTime=null}startWatching();updateButtonStates();updateStatus('recording')}
+function stopTracking(){if(!STATE.tracking)return;STATE.tracking=false;STATE.paused=false;if(STATE.pauseStartTime){STATE.pausedDuration+=Date.now()-STATE.pauseStartTime;STATE.pauseStartTime=null}stopWatching();if(STATE.positions.length>=2)saveTrack();updateButtonStates();updateStatus('inactive');updateStats()}
+function clearMapDisplay(){if(trackPolyline){map.removeLayer(trackPolyline);trackPolyline=null}allPolylines.forEach(p=>map.removeLayer(p));allPolylines=[];allMarkers.forEach(m=>map.removeLayer(m));allMarkers=[];if(currentMarker){map.removeLayer(currentMarker);currentMarker=null}}
+
+function startWatching(){
+    const opts={enableHighAccuracy:STATE.accuracyLevel==='high',timeout:STATE.intervalSeconds*2000,maximumAge:STATE.intervalSeconds*500};
+    navigator.geolocation.getCurrentPosition(pos=>{const gcj=wgs84ToGcj02(pos.coords.latitude,pos.coords.longitude);map.setView([gcj.lat,gcj.lng],16);updateCurrentMarker(gcj.lat,gcj.lng)},
+    err=>{
+        if(err.code===1)showPermissionOverlay();
+        else if(window.location.protocol==='file:')document.getElementById('gps-tip').classList.remove('hidden');
+    },opts);
+    STATE.watchId=navigator.geolocation.watchPosition(onPositionUpdate,err=>{if(err.code===1)showPermissionOverlay()},opts)
+}
+function stopWatching(){if(STATE.watchId!==null){navigator.geolocation.clearWatch(STATE.watchId);STATE.watchId=null}}
+
+function updateButtonStates(){const bs=document.getElementById('mnu-start'),bp=document.getElementById('mnu-pause'),bst=document.getElementById('mnu-stop');if(STATE.tracking&&!STATE.paused){bs.disabled=true;bp.disabled=false;bst.disabled=false;bs.textContent='▶ 记录中';bp.textContent='⏸ 暂停';bst.textContent='⏹ 停止'}else if(STATE.tracking&&STATE.paused){bs.disabled=false;bp.disabled=true;bst.disabled=false;bs.textContent='▶ 继续';bp.textContent='已暂停';bst.textContent='⏹ 停止'}else{bs.disabled=false;bp.disabled=true;bst.disabled=true;bs.textContent='▶ 开始';bp.textContent='⏸ 暂停';bst.textContent='⏹ 停止'}}
+function updateStatus(s){const d=document.getElementById('status-dot'),t=document.getElementById('status-text');d.className='dot';t.textContent=s==='recording'?'记录中':s==='paused'?'已暂停':'未记录';d.classList.add(s==='recording'?'active':s==='paused'?'paused':'inactive')}
+function updateStats(){
+    document.getElementById('point-count').textContent=STATE.positions.length;document.getElementById('distance').textContent=(STATE.totalDistance/1000).toFixed(2);
+    let elapsed=0;if(STATE.tracking&&STATE.startTime){elapsed=Date.now()-STATE.startTime-STATE.pausedDuration;if(STATE.pauseStartTime)elapsed-=(Date.now()-STATE.pauseStartTime)}
+    const m=Math.floor(elapsed/60000),s=Math.floor((elapsed%60000)/1000);document.getElementById('duration').textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+    document.getElementById('mnu-points').textContent=STATE.positions.length;document.getElementById('mnu-dist').textContent=(STATE.totalDistance/1000).toFixed(2);document.getElementById('mnu-dur').textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')
+}
+setInterval(()=>{if(STATE.tracking)updateStats();updateClock()},1000);
+function updateClock(){document.getElementById('current-time').textContent=new Date().toLocaleTimeString('zh-CN',{hour12:false});if(STATE.scheduleEnabled)checkSchedule(new Date())}
+function updateSchedule(){STATE.scheduleEnabled=document.getElementById('schedule-enabled').checked;STATE.schedules=[{start:document.getElementById('start-time').value,end:document.getElementById('end-time').value}];saveSettings();if(STATE.scheduleEnabled)checkSchedule(new Date())}
+function checkSchedule(now){if(!STATE.scheduleEnabled||STATE.schedules.length===0)return;const ct=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0'),s=STATE.schedules[0];if(ct>=s.start&&ct<s.end&&!STATE.tracking)startTracking();else if(!(ct>=s.start&&ct<s.end)&&STATE.tracking&&!STATE.paused)pauseTracking()}
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open('TrackRecorderDB',1);r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('tracks')){const s=db.createObjectStore('tracks',{keyPath:'id',autoIncrement:true});s.createIndex('date','date',{unique:false})}};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function saveTrack(){const pts=[...STATE.positions];if(pts.length<2)return;const track={date:new Date().toISOString(),startTime:STATE.startTime,endTime:Date.now(),points:pts,distance:STATE.totalDistance,pointCount:pts.length,schedule:STATE.schedules[0]||null};try{const db=await openDB(),tx=db.transaction('tracks','readwrite'),store=tx.objectStore('tracks');await new Promise((res,rej)=>{const r=store.add(track);r.onsuccess=res;r.onerror=()=>rej(r.error)});db.close();STATE.positions=[];STATE.totalDistance=0;STATE.startTime=null;STATE.pausedDuration=0;loadHistory();alert('轨迹已保存!')}catch(e){alert('保存失败')}}
+async function loadHistory(){const el=document.getElementById('history-list');try{const db=await openDB(),tx=db.transaction('tracks','readonly'),store=tx.objectStore('tracks');const tracks=await new Promise((res,rej)=>{const r=store.getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});db.close();if(!tracks.length){el.innerHTML='<p class="empty-hint">暂无历史</p>';return}tracks.sort((a,b)=>b.endTime-a.endTime);el.innerHTML=tracks.map(t=>{const d=new Date(t.date);return`<div class="history-item"><div><div class="date">${d.toLocaleDateString('zh-CN')} ${d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}</div><div class="meta">${t.pointCount}点·${(t.distance/1000).toFixed(2)}km</div></div><div class="actions"><button class="btn-icon" onclick="viewTrack(${t.id})">查看</button><button class="btn-icon delete" onclick="deleteTrack(${t.id})">删除</button></div></div>`}).join('')}catch(e){el.innerHTML='<p class="empty-hint">加载失败</p>'}}
+async function viewTrack(id){try{const db=await openDB(),tx=db.transaction('tracks','readonly'),store=tx.objectStore('tracks');const t=await new Promise((res,rej)=>{const r=store.get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});db.close();if(!t||!t.points||t.points.length<2)return;clearMapDisplay();const coords=t.points.map(p=>[p.lat,p.lng]);allPolylines.push(L.polyline(coords,{color:'#e53935',weight:4,opacity:0.8,smoothFactor:2}).addTo(map));allMarkers.push(L.marker([t.points[0].lat,t.points[0].lng],{icon:L.divIcon({className:'track-marker',html:'<div style="background:#43a047;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">起</div>',iconSize:[20,20],iconAnchor:[10,10]})}).addTo(map));allMarkers.push(L.marker([t.points[t.points.length-1].lat,t.points[t.points.length-1].lng],{icon:L.divIcon({className:'track-marker',html:'<div style="background:#e53935;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">终</div>',iconSize:[20,20],iconAnchor:[10,10]})}).addTo(map));map.fitBounds(L.latLngBounds(coords),{padding:[50,50]});switchTab('main')}catch(e){alert('加载失败')}}
+async function deleteTrack(id){if(!confirm('确定删除？'))return;try{const db=await openDB(),tx=db.transaction('tracks','readwrite'),store=tx.objectStore('tracks');await new Promise((res,rej)=>{const r=store.delete(id);r.onsuccess=res;r.onerror=()=>rej(r.error)});db.close();loadHistory()}catch(e){alert('删除失败')}}
+function switchTab(name){document.querySelectorAll('.btab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));document.querySelectorAll('.btab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+name));if(name==='history')loadHistory()}
+document.querySelectorAll('.btab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+function openMenu(){document.getElementById('menu-overlay').classList.remove('hidden');updateStats();updateButtonStates()}
+function closeMenu(){document.getElementById('menu-overlay').classList.add('hidden')}
+function focusSearch(){document.getElementById('search-input').focus()}
+function initSearch(){
+    const inp=document.getElementById('search-input'),clr=document.getElementById('search-clear'),res=document.getElementById('search-results');
+    inp.addEventListener('input',function(){const q=this.value.trim();clr.classList.toggle('hidden',q==='');clearTimeout(searchDebounce);if(q.length<2){res.classList.add('hidden');res.innerHTML='';return}searchDebounce=setTimeout(()=>searchPlace(q),400)});
+    inp.addEventListener('focus',function(){if(this.value.trim().length>=2)res.classList.remove('hidden')});
+    map.on('click',()=>res.classList.add('hidden'));
+    inp.addEventListener('keydown',function(e){if(e.key==='Enter'){const f=res.querySelector('.search-result-item');if(f)f.click()}})
+}
+function searchPlace(query){
+    const res=document.getElementById('search-results'),q=query.toLowerCase();let items=[];
+    if(landmarks.length>0){landmarks.filter(l=>l.name.toLowerCase().includes(q)).forEach(l=>{items.push({lat:l.lat,lng:l.lng,name:l.name,address:'📌 我的地标 · '+new Date(l.time).toLocaleString('zh-CN'),isLocal:true})})}
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit='+(6-Math.min(items.length,3))+'&accept-language=zh&q='+encodeURIComponent(query),{headers:{'User-Agent':'Mmap/1.0'}}).then(r=>r.json()).then(data=>{data.forEach(item=>{items.push({lat:item.lat,lng:item.lon,name:item.name||item.display_name.split(',')[0],address:item.display_name||'',isLocal:false})});renderSearchResults(items,res)}).catch(()=>renderSearchResults(items,res))
+}
+function renderSearchResults(items,res){if(!items.length){res.innerHTML='<div class="search-result-item" style="color:#999">未找到</div>';res.classList.remove('hidden');return}res.innerHTML=items.slice(0,8).map((item,i)=>{return`<div class="search-result-item" onclick="selectSearchResult(${item.lat},${item.lng},'${item.name.replace(/'/g,"\\'")}')"><span class="result-icon">${item.isLocal?'🏠':(i===0?'📍':'📌')}</span><div class="result-main"><div class="result-name">${item.name}</div><div class="result-addr">${item.address}</div></div></div>`}).join('');res.classList.remove('hidden')}
+function selectSearchResult(lat,lng,name){document.getElementById('search-results').classList.add('hidden');document.getElementById('search-input').value=name;document.getElementById('search-clear').classList.remove('hidden');if(searchMarker)map.removeLayer(searchMarker);const gcj=wgs84ToGcj02(parseFloat(lat),parseFloat(lng));searchMarker=L.marker([gcj.lat,gcj.lng],{icon:L.divIcon({className:'search-marker-container',html:'<div style="background:#e53935;color:#fff;width:24px;height:24px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-size:12px;"><span style="transform:rotate(45deg)">📍</span></div>',iconSize:[24,24],iconAnchor:[12,24]})}).addTo(map);searchMarker.bindPopup('<b>'+name+'</b>',{closeButton:true}).openPopup();map.flyTo([gcj.lat,gcj.lng],16,{duration:1})}
+function clearSearch(){document.getElementById('search-input').value='';document.getElementById('search-clear').classList.add('hidden');document.getElementById('search-results').classList.add('hidden');document.getElementById('search-results').innerHTML='';if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}}
+function loadLandmarks(){try{landmarks=JSON.parse(localStorage.getItem('tracker-landmarks')||'[]')}catch(e){landmarks=[]}}
+function saveLandmarks(){localStorage.setItem('tracker-landmarks',JSON.stringify(landmarks));renderLandmarksUI();renderLandmarkMarkers()}
+function saveLandmark(){
+    navigator.geolocation.getCurrentPosition(pos=>{const gcj=wgs84ToGcj02(pos.coords.latitude,pos.coords.longitude);const name=prompt('请输入地标名称:','我的位置 '+new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}));if(!name)return;landmarks.push({id:Date.now(),name:name.trim(),lat:gcj.lat,lng:gcj.lng,time:Date.now()});saveLandmarks()},
+    err=>{if(window.location.protocol==='file:')document.getElementById('gps-tip').classList.remove('hidden');else alert('无法获取位置，请检查GPS是否开启')},{enableHighAccuracy:true,timeout:10000})
+}
+function goToLandmark(id){const lm=landmarks.find(l=>l.id===id);if(!lm)return;map.flyTo([lm.lat,lm.lng],16,{duration:1});L.circleMarker([lm.lat,lm.lng],{radius:12,color:'#ff6f00',fillColor:'#ff8f00',fillOpacity:0.4,weight:3}).addTo(map).on('click',function(){map.removeLayer(this)})}
+function deleteLandmark(id){if(!confirm('删除此地标？'))return;landmarks=landmarks.filter(l=>l.id!==id);saveLandmarks()}
+function renderLandmarksUI(){
+    const bl=document.getElementById('landmark-list'),ml=document.getElementById('menu-landmarks');
+    if(!landmarks.length){if(bl)bl.innerHTML='<p class="empty-hint">暂无地标</p>';if(ml)ml.innerHTML='';return}
+    const html=landmarks.slice().reverse().map(l=>`<div class="lm-item" onclick="goToLandmark(${l.id})"><div><div class="lm-name">📌 ${l.name}</div><div class="lm-meta">${new Date(l.time).toLocaleString('zh-CN')}</div></div><div class="lm-actions"><button class="btn-icon delete" onclick="event.stopPropagation();deleteLandmark(${l.id})">✕</button></div></div>`).join('');
+    if(bl)bl.innerHTML=html;if(ml)ml.innerHTML=landmarks.slice().reverse().map(l=>`<div class="lm-item-small" onclick="goToLandmark(${l.id})"><span class="lm-name-s">📌 ${l.name}</span><span class="lm-del" onclick="event.stopPropagation();deleteLandmark(${l.id})">✕</span></div>`).join('')
+}
+function renderLandmarkMarkers(){landmarkMarkers.forEach(m=>map.removeLayer(m));landmarkMarkers=landmarks.map(l=>L.marker([l.lat,l.lng],{icon:L.divIcon({className:'lm-map-marker',html:'<div style="background:#ff8f00;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">📌</div>',iconSize:[20,20],iconAnchor:[10,20]})}).bindPopup('<b>'+l.name+'</b><br><small>'+new Date(l.time).toLocaleString('zh-CN')+'</small>',{closeButton:true}).addTo(map))}
+function locateMe(){
+    const fab=document.getElementById('fab-locate');fab.classList.add('locating');
+    navigator.geolocation.getCurrentPosition(pos=>{const gcj=wgs84ToGcj02(pos.coords.latitude,pos.coords.longitude);updateCurrentMarker(gcj.lat,gcj.lng);map.setView([gcj.lat,gcj.lng],17,{animate:{duration:0.6}});fab.classList.remove('locating')},
+    err=>{fab.classList.remove('locating');if(window.location.protocol==='file:')document.getElementById('gps-tip').classList.remove('hidden');else if(err.code===1)alert('请在浏览器设置中允许位置权限');else alert('无法获取GPS信号')},{enableHighAccuracy:true,timeout:12000,maximumAge:3000})
+}
+function updateAccuracy(){STATE.accuracyLevel=document.getElementById('accuracy-level').value;if(STATE.tracking&&!STATE.paused){stopWatching();startWatching()}saveSettings()}
+function updateInterval(){STATE.intervalSeconds=parseInt(document.getElementById('update-interval').value);if(STATE.tracking&&!STATE.paused){stopWatching();startWatching()}saveSettings()}
+function saveSettings(){localStorage.setItem('tracker-settings',JSON.stringify({scheduleEnabled:STATE.scheduleEnabled,startTime:document.getElementById('start-time').value,endTime:document.getElementById('end-time').value,accuracyLevel:STATE.accuracyLevel,intervalSeconds:STATE.intervalSeconds}))}
+function loadSettings(){const s=localStorage.getItem('tracker-settings');if(!s)return;try{const o=JSON.parse(s);STATE.scheduleEnabled=o.scheduleEnabled||false;STATE.accuracyLevel=o.accuracyLevel||'medium';STATE.intervalSeconds=o.intervalSeconds||5;document.getElementById('schedule-enabled').checked=STATE.scheduleEnabled;document.getElementById('start-time').value=o.startTime||'08:00';document.getElementById('end-time').value=o.endTime||'18:00';document.getElementById('accuracy-level').value=STATE.accuracyLevel;document.getElementById('update-interval').value=STATE.intervalSeconds;if(STATE.scheduleEnabled)STATE.schedules=[{start:o.startTime||'08:00',end:o.endTime||'18:00'}]}catch(e){}}
+function showPermissionOverlay(){document.getElementById('permission-overlay').classList.remove('hidden')}
+async function requestPermission(){
+    if(window.location.protocol==='file:'){document.getElementById('gps-tip').classList.remove('hidden');return}
+    try{const r=await navigator.permissions.query({name:'geolocation'});if(r.state==='denied'){alert('请在系统设置中允许浏览器使用位置权限');document.getElementById('permission-overlay').classList.add('hidden');return}}catch(e){}
+    navigator.geolocation.getCurrentPosition(()=>document.getElementById('permission-overlay').classList.add('hidden'),()=>document.getElementById('permission-overlay').classList.add('hidden'),{enableHighAccuracy:true,timeout:10000})
+}
+function init(){
+    initMap();initSearch();loadSettings();loadLandmarks();renderLandmarksUI();renderLandmarkMarkers();
+    updateButtonStates();updateStatus('inactive');updateClock();
+    if(navigator.permissions){navigator.permissions.query({name:'geolocation'}).then(r=>{if(r.state==='denied')showPermissionOverlay()}).catch(()=>{})}
+    window.addEventListener('beforeunload',()=>{if(STATE.tracking)stopWatching()});
+    document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='f'){e.preventDefault();focusSearch();return}if((e.ctrlKey||e.metaKey)&&e.key==='m'){e.preventDefault();openMenu();return}if(e.key==='Escape'){closeMenu();clearSearch()}});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden){updateClock();updateStats();updateButtonStates()}})
+}
+document.addEventListener('DOMContentLoaded',init);
+</script>
+</body>
+</html>
