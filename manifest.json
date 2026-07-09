@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "轨迹记录器",
-  "short_name": "轨迹记录",
-  "description": "记录日常移动轨迹，支持定时记录、地标管理、历史回放",
+  "name": "Mmap",
+  "short_name": "Mmap",
+  "description": "Mmap - 记录日常移动轨迹，支持定时记录、地标管理、历史回放",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
@@ -14,6 +14,30 @@
   "dir": "ltr",
   "categories": ["navigation", "utilities", "lifestyle"],
   "icons": [
+    {
+      "src": "icon-48.png",
+      "sizes": "48x48",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "icon-192.png",
       "sizes": "192x192",

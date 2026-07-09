@@ -57,6 +57,9 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
 
+        // 允许跨域请求（file:// 协议下访问 Nominatim API）
+        settings.setAllowUniversalAccessFromFileURLs(true);
+
         // 允许混合内容（现有 phone-server 就是 HTTPS）
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 

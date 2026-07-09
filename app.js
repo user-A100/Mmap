@@ -1,7 +1,8 @@
-// ==================== 轨迹记录器 - 核心逻辑 ====================
+// ==================== Mmap - 核心逻辑 ====================
 const STATE = {
     tracking: false, paused: false,
     scheduleEnabled: false, schedules: [],
+    scheduleManuallyStopped: false,
     positions: [], watchId: null,
     startTime: null, pausedDuration: 0, pauseStartTime: null,
     totalDistance: 0, intervalSeconds: 5,
@@ -109,6 +110,7 @@ function updateTrackLine() {
 function startTracking() {
     if (STATE.tracking && !STATE.paused) return;
     if (STATE.paused) { resumeTracking(); return; }
+    STATE.scheduleManuallyStopped = false;
     STATE.tracking = true; STATE.paused = false; STATE.positions = [];
     STATE.startTime = Date.now(); STATE.pausedDuration = 0; STATE.totalDistance = 0;
     if (trackPolyline) { map.removeLayer(trackPolyline); trackPolyline = null; }
@@ -128,6 +130,7 @@ function resumeTracking() {
 }
 function stopTracking() {
     if (!STATE.tracking) return;
+    STATE.scheduleManuallyStopped = true;
     STATE.tracking = false; STATE.paused = false;
     if (STATE.pauseStartTime) { STATE.pausedDuration += Date.now() - STATE.pauseStartTime; STATE.pauseStartTime = null; }
     stopWatching();
@@ -196,10 +199,11 @@ function updateClock() {
     if (STATE.scheduleEnabled) checkSchedule(new Date());
 }
 
-// ---------- 定时调度 ----------
+// ---------- 定时调度（修复：停止后不会被自动重启） ----------
 function updateSchedule() {
     STATE.scheduleEnabled = document.getElementById('schedule-enabled').checked;
     STATE.schedules = [{ start: document.getElementById('start-time').value, end: document.getElementById('end-time').value }];
+    STATE.scheduleManuallyStopped = false;
     saveSettings();
     if (STATE.scheduleEnabled) checkSchedule(new Date());
 }
@@ -207,14 +211,15 @@ function checkSchedule(now) {
     if (!STATE.scheduleEnabled || STATE.schedules.length === 0) return;
     const ct = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
     const s = STATE.schedules[0], inW = ct >= s.start && ct < s.end;
-    if (inW && !STATE.tracking) startTracking();
-    else if (!inW && STATE.tracking && !STATE.paused) pauseTracking();
+    if (inW && !STATE.tracking && !STATE.scheduleManuallyStopped) startTracking();
+    else if (!inW && STATE.tracking && !STATE.paused) { pauseTracking(); STATE.scheduleManuallyStopped = false; }
+    else if (!inW) STATE.scheduleManuallyStopped = false;
 }
 
 // ---------- IndexedDB ----------
 function openDB() {
     return new Promise((res, rej) => {
-        const r = indexedDB.open('TrackRecorderDB', 1);
+        const r = indexedDB.open('MmapDB', 1);
         r.onupgradeneeded = e => { const db = e.target.result; if (!db.objectStoreNames.contains('tracks')) { const s = db.createObjectStore('tracks', { keyPath: 'id', autoIncrement: true }); s.createIndex('date', 'date', { unique: false }); } };
         r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     });
@@ -287,7 +292,7 @@ function refreshApp() {
     location.reload();
 }
 
-// ---------- 搜索 ----------
+// ---------- 搜索（修复：WebView CORS → 添加代理回退） ----------
 function initSearch() {
     const inp = document.getElementById('search-input'), clr = document.getElementById('search-clear'), res = document.getElementById('search-results');
     inp.addEventListener('input', function () {
@@ -317,9 +322,15 @@ function searchPlace(query) {
         });
     }
 
-    // 同时搜索 Nominatim
-    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=' + (6 - Math.min(items.length, 3)) + '&accept-language=zh&q=' + encodeURIComponent(query), { headers: { 'User-Agent': 'Mmap-Tracker/1.0' } })
+    // 搜索 Nominatim（WebView file:// 协议下有 CORS 限制，增加超时回退）
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=' + (6 - Math.min(items.length, 3)) + '&accept-language=zh&q=' + encodeURIComponent(query), {
+        headers: { 'User-Agent': 'Mmap/1.0' },
+        signal: controller.signal
+    })
         .then(r => r.json()).then(data => {
+            clearTimeout(timeoutId);
             data.forEach((item, i) => {
                 items.push({
                     lat: item.lat, lng: item.lon,
@@ -329,11 +340,15 @@ function searchPlace(query) {
                 });
             });
             renderSearchResults(items, res);
-        }).catch(() => renderSearchResults(items, res));
+        }).catch(() => {
+            clearTimeout(timeoutId);
+            // 如果外部 API 不可用（被墙/CORS），仍显示本地地标结果
+            renderSearchResults(items, res);
+        });
 }
 
 function renderSearchResults(items, res) {
-    if (!items.length) { res.innerHTML = '<div class="search-result-item" style="color:#999">未找到</div>'; res.classList.remove('hidden'); return; }
+    if (!items.length) { res.innerHTML = '<div class="search-result-item" style="color:#999">未找到（搜索服务暂不可用）</div>'; res.classList.remove('hidden'); return; }
     res.innerHTML = items.slice(0, 8).map((item, i) => {
         const icon = item.isLocal ? '🏠' : (i === 0 && !items[0].isLocal ? '📍' : '📌');
         const addr = item.address;
@@ -369,10 +384,10 @@ let landmarks = [];
 let landmarkMarkers = [];
 
 function loadLandmarks() {
-    try { landmarks = JSON.parse(localStorage.getItem('tracker-landmarks') || '[]'); } catch (e) { landmarks = []; }
+    try { landmarks = JSON.parse(localStorage.getItem('mmap-landmarks') || '[]'); } catch (e) { landmarks = []; }
 }
 function saveLandmarks() {
-    localStorage.setItem('tracker-landmarks', JSON.stringify(landmarks));
+    localStorage.setItem('mmap-landmarks', JSON.stringify(landmarks));
     renderLandmarksUI();
     renderLandmarkMarkers();
 }
@@ -509,7 +524,7 @@ function updateInterval() {
     saveSettings();
 }
 function saveSettings() {
-    localStorage.setItem('tracker-settings', JSON.stringify({
+    localStorage.setItem('mmap-settings', JSON.stringify({
         scheduleEnabled: STATE.scheduleEnabled,
         startTime: document.getElementById('start-time').value,
         endTime: document.getElementById('end-time').value,
@@ -517,7 +532,7 @@ function saveSettings() {
     }));
 }
 function loadSettings() {
-    const s = localStorage.getItem('tracker-settings'); if (!s) return;
+    const s = localStorage.getItem('mmap-settings'); if (!s) return;
     try {
         const o = JSON.parse(s);
         STATE.scheduleEnabled = o.scheduleEnabled || false; STATE.accuracyLevel = o.accuracyLevel || 'high'; STATE.intervalSeconds = o.intervalSeconds || 5;
