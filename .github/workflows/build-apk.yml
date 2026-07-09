@@ -29,13 +29,15 @@ jobs:
       - name: 创建 local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
-      - name: 安装 Gradle 并生成 Wrapper
+      - name: 安装 Gradle 8.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: 生成 Gradle Wrapper
         run: |
           cd android
-          wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
-          unzip -q gradle-8.5-bin.zip
-          gradle-8.5/bin/gradle wrapper --gradle-version 8.5
-          rm -rf gradle-8.5 gradle-8.5-bin.zip
+          gradle wrapper --gradle-version 8.5
 
       - name: 复制网页资源到 Android assets
         run: |
