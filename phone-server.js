@@ -38,17 +38,16 @@ function isOnSharedStorage() {
 
 /** 修复文件或目录的权限（适配 Android Termux 环境） */
 function fixPermissions(filePath) {
+    // ⚠ chmod 在 Android 共享存储（FUSE/sdcardfs）上无效，直接跳过
+    if (isOnSharedStorage()) return;
     try {
         const { execSync: es } = require('child_process');
-        // ⚠ chmod 在 Android 共享存储（FUSE/sdcardfs）上无效！
-        // 仅在 Termux 私有数据目录下有效
-        es(`chmod 644 "${filePath}" 2>/dev/null || true`, { stdio: 'pipe' });
-        // 如果是目录，加执行权限
+        es(`chmod 644 "${filePath}"`, { stdio: 'pipe', timeout: 3000 });
         if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
-            es(`chmod 755 "${filePath}" 2>/dev/null || true`, { stdio: 'pipe' });
+            es(`chmod 755 "${filePath}"`, { stdio: 'pipe', timeout: 3000 });
         }
     } catch (e) {
-        // 忽略修复失败，后续有更明确的报错
+        // 权限修复失败不致命，后续读取时会给出明确报错
     }
 }
 
@@ -77,8 +76,10 @@ function ensureCert() {
 
     // 修复项目目录权限（Android Termux 下可能因文件来源不同导致权限异常）
     try {
-        fixPermissions(__dirname);
-        if (fs.existsSync(CERT_DIR)) fixPermissions(CERT_DIR);
+        if (!isOnSharedStorage()) {
+            fixPermissions(__dirname);
+            if (fs.existsSync(CERT_DIR)) fixPermissions(CERT_DIR);
+        }
     } catch (_) {}
 
     if (!fs.existsSync(CERT_DIR)) {
@@ -107,13 +108,38 @@ function ensureCert() {
             console.log('✅ 使用已有证书');
             return { key, cert };
         } catch (e) {
-            console.error('❌ 读取证书文件失败（权限不足）：', e.message);
-            console.log('💡 正在尝试重新生成证书...');
-            // 删除旧证书，重新生成
+            console.error('❌ 读取证书文件失败：', e.message);
+            if (e.code === 'EACCES' || e.code === 'EPERM' || e.code === 'EIO') {
+                console.log('');
+                console.log('💡 这是文件权限问题，最常见的原因是：');
+                console.log('   ① 项目在 Android 共享存储（/sdcard/ 等）上运行');
+                console.log('   ② .certs 目录残留了 root 权限的文件');
+                console.log('   ③ Termux 存储权限未授权');
+                console.log('   ✅ 解决方法：');
+                console.log('      rm -rf ' + CERT_DIR);
+                console.log('      或 cp -r "' + __dirname + '" ~/Mmap && cd ~/Mmap && node phone-server.js');
+            }
+            // 尝试清理并重新生成证书
+            console.log('');
+            console.log('💡 正在尝试清理旧证书并重新生成...');
             try { fs.unlinkSync(KEY_PATH); } catch (_) {}
             try { fs.unlinkSync(CERT_PATH); } catch (_) {}
             try { fs.rmdirSync(CERT_DIR); } catch (_) {}
-            return ensureCert();
+            // 直接生成新证书，不再递归（避免无限循环）
+            console.log('🔐 正在重新生成自签名证书...');
+            try {
+                execSync(
+                    `openssl req -x509 -newkey rsa:2048 -keyout "${KEY_PATH}" -out "${CERT_PATH}" -days 3650 -nodes -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"`,
+                    { stdio: 'pipe' }
+                );
+                fixPermissions(KEY_PATH);
+                fixPermissions(CERT_PATH);
+                console.log('✅ 证书已重新生成');
+                return { key: fs.readFileSync(KEY_PATH), cert: fs.readFileSync(CERT_PATH) };
+            } catch (genErr) {
+                console.error('❌ 重新生成证书也失败：', genErr.message);
+                process.exit(1);
+            }
         }
     }
 
