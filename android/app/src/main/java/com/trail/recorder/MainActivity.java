@@ -52,7 +52,6 @@ public class MainActivity extends AppCompatActivity {
 
         // 启用缓存
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setAppCacheEnabled(true);
 
         // 允许文件访问（加载本地 HTML 和地图资源）
         settings.setAllowFileAccess(true);
