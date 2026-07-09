@@ -3,7 +3,7 @@ name: Build APK
 on:
   push:
     branches: [master]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -26,6 +26,11 @@ jobs:
 
       - name: 创建 local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+
+      - name: 生成 Gradle Wrapper
+        run: |
+          cd android
+          gradle wrapper --gradle-version 8.5
 
       - name: 复制网页资源到 Android assets
         run: |
@@ -51,7 +56,7 @@ jobs:
       - name: 构建 Debug APK
         run: |
           cd android
-          gradle assembleDebug
+          ./gradlew assembleDebug
 
       - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
