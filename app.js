@@ -5,7 +5,7 @@ const STATE = {
     positions: [], watchId: null,
     startTime: null, pausedDuration: 0, pauseStartTime: null,
     totalDistance: 0, intervalSeconds: 5,
-    accuracyLevel: 'medium', minDistanceFilter: 3,
+    accuracyLevel: 'high', minDistanceFilter: 3,
 };
 
 let map, currentMarker, trackPolyline;
@@ -520,7 +520,7 @@ function loadSettings() {
     const s = localStorage.getItem('tracker-settings'); if (!s) return;
     try {
         const o = JSON.parse(s);
-        STATE.scheduleEnabled = o.scheduleEnabled || false; STATE.accuracyLevel = o.accuracyLevel || 'medium'; STATE.intervalSeconds = o.intervalSeconds || 5;
+        STATE.scheduleEnabled = o.scheduleEnabled || false; STATE.accuracyLevel = o.accuracyLevel || 'high'; STATE.intervalSeconds = o.intervalSeconds || 5;
         document.getElementById('schedule-enabled').checked = STATE.scheduleEnabled;
         document.getElementById('start-time').value = o.startTime || '08:00';
         document.getElementById('end-time').value = o.endTime || '18:00';
